@@ -1,0 +1,386 @@
+[
+    {
+        "id": "9466ba9345ef74fd",
+        "type": "tab",
+        "label": "Smart Parking System v1",
+        "disabled": false,
+        "info": "Enhanced parking detection using camera and distance sensor with improved dashboard",
+        "env": []
+    },
+    {
+        "id": "f6321cacbe1e7e6c",
+        "type": "mqtt in",
+        "z": "9466ba9345ef74fd",
+        "name": "Camera Feed",
+        "topic": "camera/frame",
+        "qos": "0",
+        "datatype": "utf8",
+        "broker": "b949449e0e17c7f4",
+        "nl": false,
+        "rap": true,
+        "rh": 0,
+        "inputs": 0,
+        "x": 90,
+        "y": 140,
+        "wires": [
+            [
+                "27626111ff3dda90"
+            ]
+        ]
+    },
+    {
+        "id": "27626111ff3dda90",
+        "type": "function",
+        "z": "9466ba9345ef74fd",
+        "name": "Base64 to Buffer",
+        "func": "// Replace the \"Base64 to Buffer\" function (node 27626111ff3dda90)\n// with this improved version:\n\n// Store the original base64 for UI display later\nmsg.originalImage = msg.payload;\n\n// Check if the payload is a proper base64 data URI\nif (!msg.payload || typeof msg.payload !== 'string') {\n    node.warn(\"Invalid camera data received\");\n    return null;\n}\n\n// Convert to buffer for API processing\ntry {\n    let base64Data = msg.payload.replace(/^data:image\\/\\w+;base64,/, '');\n    msg.payload = Buffer.from(base64Data, 'base64');\n\n    // Verify that we have valid data\n    if (msg.payload.length === 0) {\n        node.warn(\"Empty image data received\");\n        return null;\n    }\n\n    return msg;\n} catch (error) {\n    node.error(\"Error processing image: \" + error.message);\n    return null;\n}",
+        "outputs": 1,
+        "timeout": "",
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 270,
+        "y": 140,
+        "wires": [
+            [
+                "adc6687e0245eedd"
+            ]
+        ]
+    },
+    {
+        "id": "adc6687e0245eedd",
+        "type": "function",
+        "z": "9466ba9345ef74fd",
+        "name": "Prepare HTTP Payload",
+        "func": "msg.headers = {\n    'Content-Type': 'multipart/form-data'\n};\n\nmsg.payload = {\n    \"file\": {\n        \"value\": msg.payload,\n        \"options\": {\n            \"filename\": \"frame.jpg\",\n            \"contentType\": \"image/jpeg\"\n        }\n    }\n};\n\nreturn msg;",
+        "outputs": 1,
+        "x": 460,
+        "y": 140,
+        "wires": [
+            [
+                "155fc1f525b628f7"
+            ]
+        ]
+    },
+    {
+        "id": "155fc1f525b628f7",
+        "type": "http request",
+        "z": "9466ba9345ef74fd",
+        "name": "Vision API",
+        "method": "POST",
+        "ret": "obj",
+        "paytoqs": "ignore",
+        "url": "http://localhost:8000/predict",
+        "tls": "",
+        "persist": false,
+        "proxy": "",
+        "insecureHTTPParser": false,
+        "authType": "",
+        "senderr": false,
+        "headers": [],
+        "x": 650,
+        "y": 140,
+        "wires": [
+            [
+                "e4db06310c4d870e"
+            ]
+        ]
+    },
+    {
+        "id": "1b0bfa4cc366d88d",
+        "type": "mqtt in",
+        "z": "9466ba9345ef74fd",
+        "name": "Distance Sensor",
+        "topic": "sensor/car_detection",
+        "qos": "0",
+        "datatype": "auto-detect",
+        "broker": "b949449e0e17c7f4",
+        "nl": false,
+        "rap": true,
+        "rh": 0,
+        "inputs": 0,
+        "x": 100,
+        "y": 280,
+        "wires": [
+            [
+                "4e8e0ab05fa35def"
+            ]
+        ]
+    },
+    {
+        "id": "4e8e0ab05fa35def",
+        "type": "function",
+        "z": "9466ba9345ef74fd",
+        "name": "Process Distance",
+        "func": "let distance = parseFloat(msg.payload);\nlet occupied = distance < 20;\n\nmsg.payload = {\n    distance: distance,\n    sensorStatus: occupied ? \"occupied\" : \"vacant\"\n};\n\n// Store in flow context for fusion with camera data\nflow.set('sensorStatus', msg.payload.sensorStatus);\nflow.set('distance', distance);\nflow.set('lastDistanceUpdate', new Date().getTime());\n\nreturn msg;",
+        "outputs": 1,
+        "x": 280,
+        "y": 280,
+        "wires": [
+            [
+                "aa3ec34981014152",
+                "093af57632bc65c2"
+            ]
+        ]
+    },
+    {
+        "id": "093af57632bc65c2",
+        "type": "ui_gauge",
+        "z": "9466ba9345ef74fd",
+        "name": "Distance Gauge",
+        "group": "4bd1c223c586dc2c",
+        "order": 2,
+        "width": 6,
+        "height": 3,
+        "gtype": "gage",
+        "title": "Distance to Vehicle",
+        "label": "cm",
+        "format": "{{msg.payload.distance}}",
+        "min": 0,
+        "max": "100",
+        "colors": [
+            "#ca3838",
+            "#e6e600",
+            "#00b500"
+        ],
+        "seg1": "20",
+        "seg2": "50",
+        "diff": false,
+        "className": "",
+        "x": 480,
+        "y": 280,
+        "wires": []
+    },
+    {
+        "id": "e4db06310c4d870e",
+        "type": "function",
+        "z": "9466ba9345ef74fd",
+        "name": "Store Camera Result",
+        "func": "// Get the status from the API response\nlet cameraStatus = msg.payload.status;\n\n// Store in flow context for later use\nflow.set('cameraStatus', cameraStatus);\nflow.set('lastImage', msg.originalImage);\nflow.set('lastCameraUpdate', new Date().getTime());\n\n// Trigger the fusion node\nmsg.payload = {\n    cameraStatus: cameraStatus,\n    trigger: 'camera'\n};\n\nreturn msg;",
+        "outputs": 1,
+        "x": 830,
+        "y": 140,
+        "wires": [
+            [
+                "dd6b604ad481614c"
+            ]
+        ]
+    },
+    {
+        "id": "aa3ec34981014152",
+        "type": "function",
+        "z": "9466ba9345ef74fd",
+        "name": "Trigger Fusion",
+        "func": "// Prepare message to trigger fusion\nmsg.payload = {\n    sensorStatus: msg.payload.sensorStatus,\n    trigger: 'sensor'\n};\n\nreturn msg;",
+        "outputs": 1,
+        "x": 480,
+        "y": 340,
+        "wires": [
+            [
+                "dd6b604ad481614c"
+            ]
+        ]
+    },
+    {
+        "id": "dd6b604ad481614c",
+        "type": "function",
+        "z": "9466ba9345ef74fd",
+        "name": "Enhanced Data Fusion",
+        "func": "// Replace the \"Enhanced Data Fusion\" function (node dd6b604ad481614c)\n// with this improved version:\n\n// Get the latest status from both sensors from flow context\nlet cameraStatus = flow.get('cameraStatus') || 'unknown';\nlet sensorStatus = flow.get('sensorStatus') || 'unknown';\nlet distance = flow.get('distance') || 0;\nlet lastImage = flow.get('lastImage') || '';\n\n// Get last update timestamps\nlet lastCameraUpdate = flow.get('lastCameraUpdate') || 0;\nlet lastDistanceUpdate = flow.get('lastDistanceUpdate') || 0;\nlet currentTime = new Date().getTime();\n\n// Check if data is stale (more than 30 seconds old)\nlet cameraStale = (currentTime - lastCameraUpdate) > 30000;\nlet sensorStale = (currentTime - lastDistanceUpdate) > 30000;\n\n// Mark status as unknown if data is stale\nif (cameraStale) cameraStatus = 'unknown';\nif (sensorStale) sensorStatus = 'unknown';\n\n// Previous combined status\nlet previousStatus = flow.get('combinedStatus') || 'unknown';\nlet lastStatusChange = flow.get('lastStatusChange') || currentTime;\n\n// Get parking statistics\nlet parkingCount = flow.get('parkingCount') || 0;\nlet totalTime = flow.get('totalParkingTime') || 0;\n\n// Enhanced fusion logic - BOTH sensors must detect a car for 'occupied' status\nlet combinedStatus;\nif (cameraStatus === 'unknown' || sensorStatus === 'unknown') {\n    combinedStatus = 'checking';\n} else if (cameraStatus === 'occupied' && sensorStatus === 'occupied') {\n    combinedStatus = 'occupied';\n} else {\n    combinedStatus = 'vacant';\n}\n\n// Update statistics if status changed\nif (combinedStatus !== previousStatus) {\n    // Calculate time spent in previous state\n    let timeInState = currentTime - lastStatusChange;\n\n    // If changing from occupied to vacant, update statistics\n    if (previousStatus === 'occupied' && combinedStatus === 'vacant') {\n        parkingCount++;\n        totalTime += timeInState;\n        flow.set('parkingCount', parkingCount);\n        flow.set('totalParkingTime', totalTime);\n\n        // Log this parking event\n        let parkingHistory = flow.get('parkingHistory') || [];\n        parkingHistory.push({\n            start: new Date(lastStatusChange).toISOString(),\n            end: new Date().toISOString(),\n            duration: Math.round(timeInState / 1000) // in seconds\n        });\n\n        // Keep only last 10 events\n        if (parkingHistory.length > 10) {\n            parkingHistory = parkingHistory.slice(-10);\n        }\n        flow.set('parkingHistory', parkingHistory);\n    }\n\n    // Update last status change time\n    flow.set('lastStatusChange', currentTime);\n}\n\n// Store the new combined status\nflow.set('combinedStatus', combinedStatus);\n\n// Calculate average parking time\nlet avgTime = parkingCount > 0 ? Math.round(totalTime / parkingCount / 1000) : 0; // in seconds\n\n// Always send update when there's new camera data to ensure UI updates\nlet shouldUpdate = combinedStatus !== previousStatus ||\n    msg.payload.trigger === 'camera' ||\n    msg.payload.trigger === 'health_check';\n\nif (shouldUpdate) {\n    // Create comprehensive payload with all data\n    msg.payload = {\n        image: lastImage,\n        distance: distance,\n        cameraStatus: cameraStatus,\n        sensorStatus: sensorStatus,\n        combinedStatus: combinedStatus,\n        timestamp: new Date().toISOString(),\n        parkingCount: parkingCount,\n        averageParkingTime: avgTime,\n        cameraStale: cameraStale,\n        sensorStale: sensorStale,\n        history: flow.get('parkingHistory') || [],\n        lastStatusChange: lastStatusChange\n    };\n    return msg;\n} else {\n    return null; // No change, don't update UI\n}",
+        "outputs": 1,
+        "timeout": "",
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 650,
+        "y": 220,
+        "wires": [
+            [
+                "2cd2eb04878e9ccc",
+                "3f905d774483bd73",
+                "c27bddbae3bbffad",
+                "3869de2c73fd61b1"
+            ]
+        ]
+    },
+    {
+        "id": "2cd2eb04878e9ccc",
+        "type": "ui_template",
+        "z": "9466ba9345ef74fd",
+        "group": "4bd1c223c586dc2c",
+        "name": "Final Status",
+        "order": 4,
+        "width": "6",
+        "height": "3",
+        "format": "<div style=\"width:100%; padding:10px;\">\n  <div style=\"font-size:20px; font-weight:bold; margin-bottom:5px; text-align:center;\">PARKING STATUS</div>\n  <div style=\"\n    font-size:28px; \n    font-weight:bold; \n    padding:12px; \n    border-radius:10px;\n    background-color:{{msg.payload.combinedStatus === 'occupied' ? '#ff3b30' : (msg.payload.combinedStatus === 'vacant' ? '#34c759' : '#f9a825')}};\n    color:white;\n    display:flex;\n    align-items:center;\n    justify-content:center;\n    width:100%;\n    box-sizing:border-box;\n  \">\n    <span style=\"margin-right:10px;\">\n      {{msg.payload.combinedStatus === 'occupied' ? '🚗' : (msg.payload.combinedStatus === 'vacant' ? '✓' : '⏳')}}\n    </span>\n    {{msg.payload.combinedStatus === 'occupied' ? 'OCCUPIED' : (msg.payload.combinedStatus === 'vacant' ? 'VACANT' :\n    'CHECKING')}}\n  </div>\n  <div style=\"margin-top:10px; display:flex; justify-content:space-between; width:100%;\">\n    <div style=\"\n      font-size:12px;\n      padding:4px 8px;\n      border-radius:4px;\n      background-color:{{msg.payload.sensorStatus === 'occupied' ? '#ff3b30' : '#34c759'}};\n      color:white;\n      {{msg.payload.sensorStale ? 'opacity:0.5;' : ''}}\n    \">\n      <strong>Sensor:</strong> {{msg.payload.sensorStatus}}\n      {{msg.payload.sensorStale ? ' (STALE)' : ''}}\n    </div>\n    <div style=\"font-size:12px; color:#666;\">\n      Last updated: {{msg.payload.timestamp | date:'HH:mm:ss'}}\n    </div>\n  </div>\n</div>",
+        "storeOutMessages": true,
+        "fwdInMessages": true,
+        "resendOnRefresh": true,
+        "templateScope": "local",
+        "className": "",
+        "x": 890,
+        "y": 260,
+        "wires": [
+            []
+        ]
+    },
+    {
+        "id": "3f905d774483bd73",
+        "type": "ui_template",
+        "z": "9466ba9345ef74fd",
+        "group": "4bd1c223c586dc2c",
+        "name": "Parking Statistics",
+        "order": 5,
+        "width": 6,
+        "height": 3,
+        "format": "<div style=\"padding:10px; background-color:#f5f5f5; border-radius:8px; width:100%; box-sizing:border-box;\">\n  <h3 style=\"margin-top:0; text-align:center; color:#2c3e50;\">Parking Statistics</h3>\n\n  <div style=\"display:flex; justify-content:space-around; margin-bottom:15px;\">\n    <div\n      style=\"text-align:center; background-color:white; padding:10px; border-radius:8px; box-shadow:0 2px 4px rgba(0,0,0,0.1); width:45%;\">\n      <div style=\"font-size:12px; color:#7f8c8d;\">Total Vehicles</div>\n      <div style=\"font-size:24px; font-weight:bold; color:#3498db;\">\n        {{msg.payload.parkingCount}}\n      </div>\n    </div>\n\n    <div\n      style=\"text-align:center; background-color:white; padding:10px; border-radius:8px; box-shadow:0 2px 4px rgba(0,0,0,0.1); width:45%;\">\n      <div style=\"font-size:12px; color:#7f8c8d;\">Avg. Parking Time</div>\n      <div style=\"font-size:24px; font-weight:bold; color:#9b59b6;\">\n        {{formatTime(msg.payload.averageParkingTime)}}\n      </div>\n    </div>\n  </div>\n\n  <div ng-if=\"msg.payload.history.length > 0\" style=\"font-size:12px; color:#34495e; text-align:center;\">\n    Last vehicle parked for:\n    <span style=\"font-weight:bold;\">\n      {{formatTime(msg.payload.history[msg.payload.history.length-1].duration)}}\n    </span>\n  </div>\n</div>\n\n<script>\n  (function(scope) {\n    scope.formatTime = function(seconds) {\n      if (!seconds) return '0s';\n      \n      let mins = Math.floor(seconds / 60);\n      let secs = seconds % 60;\n      \n      if (mins > 0) {\n        return mins + 'm ' + secs + 's';\n      } else {\n        return secs + 's';\n      }\n    };\n  })(scope);\n</script>",
+        "storeOutMessages": true,
+        "fwdInMessages": true,
+        "resendOnRefresh": true,
+        "templateScope": "local",
+        "className": "",
+        "x": 910,
+        "y": 220,
+        "wires": [
+            []
+        ]
+    },
+    {
+        "id": "c27bddbae3bbffad",
+        "type": "ui_template",
+        "z": "9466ba9345ef74fd",
+        "group": "4bd1c223c586dc2c",
+        "name": "Recent Activity",
+        "order": 6,
+        "width": 6,
+        "height": 4,
+        "format": "<div style=\"padding: 10px; background-color: #f5f5f5; border-radius: 8px;\">\n  <h3 style=\"margin-top: 0; text-align: center; color: #2c3e50;\">Recent Parking Activity</h3>\n  \n  <div style=\"max-height: 150px; overflow-y: auto; background-color: white; border-radius: 8px; padding: 5px;\">\n    <table style=\"width: 100%; border-collapse: collapse; font-size: 12px;\">\n      <thead>\n        <tr style=\"background-color: #ecf0f1;\">\n          <th style=\"padding: 5px; text-align: left;\">Start Time</th>\n          <th style=\"padding: 5px; text-align: left;\">End Time</th>\n          <th style=\"padding: 5px; text-align: right;\">Duration</th>\n        </tr>\n      </thead>\n      <tbody>\n        <tr ng-repeat=\"event in msg.payload.history.slice().reverse()\" \n            style=\"border-bottom: 1px solid #ecf0f1;\">\n          <td style=\"padding: 5px;\">{{event.start | date:'HH:mm:ss'}}</td>\n          <td style=\"padding: 5px;\">{{event.end | date:'HH:mm:ss'}}</td>\n          <td style=\"padding: 5px; text-align: right; font-weight: bold;\">\n            {{formatTime(event.duration)}}\n          </td>\n        </tr>\n        <tr ng-if=\"msg.payload.history.length === 0\">\n          <td colspan=\"3\" style=\"text-align: center; padding: 15px; color: #95a5a6;\">\n            No parking activity recorded yet\n          </td>\n        </tr>\n      </tbody>\n    </table>\n  </div>\n  \n  <div style=\"margin-top: 10px; text-align: center; font-size: 11px; color: #7f8c8d;\">\n    <span ng-if=\"msg.payload.combinedStatus === 'occupied'\">\n      <span style=\"color: #e74c3c; font-weight: bold;\">Currently occupied</span> since {{msg.payload.lastStatusChange | date:'HH:mm:ss'}}\n    </span>\n  </div>\n</div>\n\n<script>\n  (function(scope) {\n    scope.formatTime = function(seconds) {\n      if (!seconds) return '0s';\n      \n      let mins = Math.floor(seconds / 60);\n      let secs = seconds % 60;\n      \n      if (mins > 0) {\n        return mins + 'm ' + secs + 's';\n      } else {\n        return secs + 's';\n      }\n    };\n  })(scope);\n</script>",
+        "storeOutMessages": true,
+        "fwdInMessages": true,
+        "resendOnRefresh": true,
+        "templateScope": "local",
+        "className": "",
+        "x": 900,
+        "y": 300,
+        "wires": [
+            []
+        ]
+    },
+    {
+        "id": "a2f39373fd820d08",
+        "type": "inject",
+        "z": "9466ba9345ef74fd",
+        "name": "Health Check",
+        "props": [
+            {
+                "p": "payload"
+            },
+            {
+                "p": "topic",
+                "vt": "str"
+            }
+        ],
+        "repeat": "30",
+        "crontab": "",
+        "once": true,
+        "onceDelay": "0.1",
+        "topic": "",
+        "payload": "",
+        "payloadType": "date",
+        "x": 110,
+        "y": 400,
+        "wires": [
+            [
+                "3fa0a15457da8819"
+            ]
+        ]
+    },
+    {
+        "id": "3fa0a15457da8819",
+        "type": "function",
+        "z": "9466ba9345ef74fd",
+        "name": "Check Sensor Health",
+        "func": "// Get last update timestamps\nlet lastCameraUpdate = flow.get('lastCameraUpdate') || 0;\nlet lastDistanceUpdate = flow.get('lastDistanceUpdate') || 0;\nlet currentTime = new Date().getTime();\n\n// Check if data is stale (more than 30 seconds old)\nlet cameraStale = (currentTime - lastCameraUpdate) > 30000;\nlet sensorStale = (currentTime - lastDistanceUpdate) > 30000;\n\n// Prepare status message\nlet msg = { payload: {} };\n\n// If either sensor is stale, trigger the fusion to update the UI\nif (cameraStale || sensorStale) {\n    msg.payload = {\n        trigger: 'health_check'\n    };\n    return msg;\n}\n\nreturn null;",
+        "outputs": 1,
+        "x": 290,
+        "y": 400,
+        "wires": [
+            [
+                "dd6b604ad481614c"
+            ]
+        ]
+    },
+    {
+        "id": "3869de2c73fd61b1",
+        "type": "ui_template",
+        "z": "9466ba9345ef74fd",
+        "group": "4bd1c223c586dc2c",
+        "name": "Camera View",
+        "order": 1,
+        "width": "6",
+        "height": "4",
+        "format": "<div style=\"text-align:center; margin-bottom:10px; width:100%;\">\n  <div style=\"font-weight:bold; margin-bottom:5px; font-size:16px;\">Camera Feed</div>\n  <div style=\"position:relative; width:100%; height:auto; overflow:hidden;\">\n    <img ng-src=\"{{msg.payload.image}}\" style=\"max-width:100%; width:100%; border-radius:8px; border:3px solid {{msg.payload.cameraStatus === 'occupied' ? '#ff3b30' : '#34c759'}};\" />\n    <div ng-if=\"!msg.payload.image\"\n      style=\"position:absolute; top:0; left:0; width:100%; height:100%; display:flex; align-items:center; justify-content:center; background-color:#f0f0f0; color:#666; border-radius:8px;\">\n      No camera feed available\n    </div>\n  </div>\n  <div style=\"margin-top:5px; font-size:14px;\">\n    <span class=\"label\" style=\"\n      display:inline-block;\n      padding:4px 8px;\n      border-radius:4px;\n      background-color:{{msg.payload.cameraStatus === 'occupied' ? '#ff3b30' : (msg.payload.cameraStatus === 'vacant' ? '#34c759' : '#999')}};\n      color:white;\n      font-weight:bold;\n      {{msg.payload.cameraStale ? 'opacity:0.5;' : ''}}\n    \">\n      Camera: {{msg.payload.cameraStatus || 'unknown'}}\n      {{msg.payload.cameraStale ? ' (STALE)' : ''}}\n    </span>\n  </div>\n</div>",
+        "storeOutMessages": true,
+        "fwdInMessages": true,
+        "resendOnRefresh": true,
+        "templateScope": "local",
+        "className": "",
+        "x": 900,
+        "y": 180,
+        "wires": [
+            []
+        ]
+    },
+    {
+        "id": "b949449e0e17c7f4",
+        "type": "mqtt-broker",
+        "name": "",
+        "broker": "localhost",
+        "port": 1883,
+        "clientid": "",
+        "autoConnect": true,
+        "usetls": false,
+        "protocolVersion": 4,
+        "keepalive": 60,
+        "cleansession": true,
+        "autoUnsubscribe": true,
+        "birthTopic": "",
+        "birthQos": "0",
+        "birthRetain": "false",
+        "birthPayload": "",
+        "birthMsg": {},
+        "closeTopic": "",
+        "closeQos": "0",
+        "closeRetain": "false",
+        "closePayload": "",
+        "closeMsg": {},
+        "willTopic": "",
+        "willQos": "0",
+        "willRetain": "false",
+        "willPayload": "",
+        "willMsg": {},
+        "userProps": "",
+        "sessionExpiry": ""
+    },
+    {
+        "id": "4bd1c223c586dc2c",
+        "type": "ui_group",
+        "name": "parking system",
+        "tab": "857cddb8bb39afbd",
+        "order": 3,
+        "disp": true,
+        "width": "12",
+        "collapse": false,
+        "className": ""
+    },
+    {
+        "id": "857cddb8bb39afbd",
+        "type": "ui_tab",
+        "name": "IoT Workshop",
+        "icon": "dashboard",
+        "disabled": false,
+        "hidden": false
+    }
+]
