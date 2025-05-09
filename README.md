@@ -139,10 +139,10 @@ Key advantages:
 
 ### Installation
 1. Clone repository:
-   ```bash
+  ```bash
    git clone https://github.com/your-repo/parking-detection.git
    cd parking-detection
-   ```
+  ```  
 2. Install Python dependencies:
   ```bash
     pip install -r requirements.txt
